@@ -1,0 +1,57 @@
+name: Build APK NoteBoard
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cari proyek
+        id: src
+        run: |
+          if [ -f settings.gradle.kts ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f NoteBoard.zip ]; then
+            unzip -q -o NoteBoard.zip -d _src
+            DIR=$(dirname "$(find _src -name settings.gradle.kts | head -1)")
+            echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.src.outputs.dir != ''
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.src.outputs.dir != ''
+        with:
+          gradle-version: "8.7"
+
+      - name: Build APK
+        if: steps.src.outputs.dir != ''
+        working-directory: ${{ steps.src.outputs.dir }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Siapkan file APK
+        if: steps.src.outputs.dir != ''
+        run: cp "${{ steps.src.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk" NoteBoard.apk
+
+      - name: Terbitkan ke Releases
+        if: steps.src.outputs.dir != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete terbaru -y --cleanup-tag || true
+          gh release create terbaru NoteBoard.apk \
+            --title "NoteBoard (build ${{ github.run_number }})" \
+            --notes "Unduh NoteBoard.apk lalu pasang di HP Android."
